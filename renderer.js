@@ -24,14 +24,23 @@
     return frag;
   }
 
+  const ARROW_GLYPH = { right: '→', left: '←', both: '↔' };
+  const ARROW_SOURCE = { right: '->', left: '<-', both: '<->' };
+
   function renderSegment(seg) {
     switch (seg.type) {
       case 'text':
         return document.createTextNode(seg.text);
-      case 'arrow':
+      case 'arrow': {
+        const span = el('span', 'arrow', ARROW_GLYPH[seg.dir] || '→');
+        span.setAttribute('data-arrow', ARROW_SOURCE[seg.dir] || '->');
+        // Atomic delete is a Phase 3 concern; mark the node as a unit now so
+        // selection-aware code can treat it as one when we get there.
+        span.contentEditable = 'false';
+        return span;
+      }
       case 'bracket':
       case 'tag-span':
-        // Placeholder rendering until later Phase 2 items wire these up.
         return el('span', 'seg-' + seg.type, segmentToFallbackText(seg));
       default:
         return document.createTextNode('');
