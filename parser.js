@@ -84,9 +84,9 @@
     if (typeof raw !== 'string') return 'empty';
     if (raw.trim().length === 0) return 'empty';
 
-    // Gloss line: `-` followed by a space. (`--` and other prefixes will be
-    // added as separate line types later; not in scope for item 1.)
-    if (/^- /.test(raw)) return 'gloss';
+    // Gloss line: `-` at start, but not the start of an arrow (`->`).
+    // Both `- foo` and `-foo` are gloss (per Phase 1 fixtures).
+    if (/^-(?!>)/.test(raw)) return 'gloss';
 
     const masked = maskBrackets(raw);
     const topLevelTags = extractTags(masked);
@@ -102,7 +102,118 @@
     return 'tagged-content';
   }
 
-  const api = { classifyLine, extractTags };
+  // Parse a single raw line into { lineType, tags, segments }.
+  //
+  // Segment shapes:
+  //   { type: "text",      text: string }
+  //   { type: "arrow",     dir: "left" | "right" | "both" }
+  //   { type: "bracket",   children: Segment[] }
+  //   { type: "tag-span",  tag: string, text: string }
+  //
+  // tag-span carries flat trailing text (not children) — matches fixtures.
+  // The renderer can decide later whether to recognize arrows inside it.
+  function parseLine(raw) {
+    if (typeof raw !== 'string') raw = '';
+    const lineType = classifyLine(raw);
+    const tags = extractTags(raw);
+
+    if (lineType === 'empty') return { lineType, tags: [], segments: [] };
+    if (lineType === 'section-header') return { lineType, tags, segments: [] };
+
+    let body = raw;
+    if (lineType === 'gloss') {
+      // Consume the `-` prefix and at most one following space.
+      body = raw.replace(/^-( )?/, '');
+    }
+    return { lineType, tags, segments: parseSegments(body, false) };
+  }
+
+  // Walk `text` left-to-right, emitting segments. When `inBracket` is true,
+  // `]` ends the current scope (the caller resumes after it).
+  function parseSegments(text, inBracket) {
+    const out = [];
+    let buf = '';
+    let i = 0;
+
+    function flush() {
+      if (buf.length > 0) {
+        out.push({ type: 'text', text: buf });
+        buf = '';
+      }
+    }
+
+    while (i < text.length) {
+      const ch = text[i];
+      const next = text[i + 1];
+      const next2 = text[i + 2];
+
+      // Bracket open — only at top level (nested brackets not supported in v1).
+      if (ch === '[' && !inBracket) {
+        flush();
+        let j = i + 1;
+        while (j < text.length && text[j] !== ']') j++;
+        const inner = text.slice(i + 1, j);
+        out.push({ type: 'bracket', children: parseSegments(inner, true) });
+        i = j < text.length ? j + 1 : j;
+        continue;
+      }
+
+      // Arrows — try longest match first.
+      if (ch === '<' && next === '-' && next2 === '>') {
+        flush();
+        out.push({ type: 'arrow', dir: 'both' });
+        i += 3;
+        continue;
+      }
+      if (ch === '-' && next === '>') {
+        flush();
+        out.push({ type: 'arrow', dir: 'right' });
+        i += 2;
+        continue;
+      }
+      if (ch === '<' && next === '-') {
+        flush();
+        out.push({ type: 'arrow', dir: 'left' });
+        i += 2;
+        continue;
+      }
+
+      // Tag-span open.
+      if (ch === '#') {
+        let j = i + 1;
+        while (j < text.length && isTagNameChar(text[j])) j++;
+        const rawName = text.slice(i + 1, j);
+        const name = rawName.replace(/\s+$/, '');
+        if (name.length > 0) {
+          flush();
+          // Span text runs from just after the trimmed tag name to the next
+          // terminator: `#`, `[`, or (when inBracket) `]`. End-of-string also
+          // terminates. Trailing whitespace eaten by the name scan still
+          // belongs to the tag-span's text — restore it via spanStart.
+          const spanStart = j - (rawName.length - name.length);
+          let k = j;
+          while (k < text.length) {
+            const c = text[k];
+            if (c === '#' || c === '[') break;
+            if (c === ']' && inBracket) break;
+            k++;
+          }
+          out.push({ type: 'tag-span', tag: name, text: text.slice(spanStart, k) });
+          i = k;
+          continue;
+        }
+        // Bare `#` not followed by a name char — literal.
+      }
+
+      buf += ch;
+      i++;
+    }
+
+    flush();
+    return out;
+  }
+
+  const api = { classifyLine, extractTags, parseLine };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
