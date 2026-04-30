@@ -39,7 +39,16 @@
         span.contentEditable = 'false';
         return span;
       }
-      case 'bracket':
+      case 'bracket': {
+        // Bracket span: muted "gloss" wrapper with literal [ and ]
+        // delimiters de-emphasized. Children render with the bracket as
+        // their outer context.
+        const wrap = el('span', 'bracket');
+        wrap.appendChild(el('span', 'bracket-delim', '['));
+        wrap.appendChild(renderSegments(seg.children));
+        wrap.appendChild(el('span', 'bracket-delim', ']'));
+        return wrap;
+      }
       case 'tag-span':
         return el('span', 'seg-' + seg.type, segmentToFallbackText(seg));
       default:
