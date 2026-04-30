@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Study Notes — Parser tests</title>
+  <style>
+    :root {
+      --pass: #1f7a1f;
+      --fail: #b00020;
+      --muted: #777;
+      --bg: #fafaf7;
+      --card: #fff;
+      --border: #e2e2dc;
+    }
+    body {
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: #222;
+      margin: 0;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    .summary {
+      margin: 0 0 16px;
+      font-weight: 600;
+    }
+    .summary.ok  { color: var(--pass); }
+    .summary.bad { color: var(--fail); }
+    .case {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--muted);
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin: 6px 0;
+    }
+    .case.pass { border-left-color: var(--pass); }
+    .case.fail { border-left-color: var(--fail); }
+    .case .label {
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .case.pass .label { color: var(--pass); }
+    .case.fail .label { color: var(--fail); }
+    .case pre {
+      margin: 4px 0 0;
+      padding: 6px 8px;
+      background: #f4f3ee;
+      border-radius: 3px;
+      font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .case .raw { color: #444; }
+    .case .diff-row { display: grid; grid-template-columns: 60px 1fr; gap: 6px; margin-top: 4px; }
+    .case .diff-row span:first-child { color: var(--muted); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Study Notes — Parser tests (Phase 1)</h1>
+  <p id="summary" class="summary">Running…</p>
+  <div id="results"></div>
+
+  <script src="./parser.js"></script>
+  <script>
+    // Phase 1 fixtures, transcribed verbatim from SPEC.md.
+    const fixtures = [
+      {
+        raw: '#Analogy',
+        want: { lineType: 'section-header', tags: [{name:'Analogy'}], segments: [] }
+      },
+      {
+        raw: '#Buddha: I pour down the rain of the Dharma,',
+        want: {
+          lineType: 'tagged-content',
+          tags: [{name:'Buddha'}],
+          segments: [{type:'tag-span', tag:'Buddha', text:': I pour down the rain of the Dharma,'}]
+        }
+      },
+      {
+        raw: '[moistened, electrified #elemental]',
+        want: {
+          lineType: 'plain',
+          tags: [{name:'elemental'}],
+          segments: [{type:'bracket', children:[
+            {type:'text', text:'moistened, electrified '},
+            {type:'tag-span', tag:'elemental', text:''}
+          ]}]
+        }
+      },
+      {
+        raw: '#small trees #irreversible bodhisattvas',
+        want: {
+          lineType: 'tagged-content',
+          tags: [{name:'small trees'}, {name:'irreversible bodhisattvas'}],
+          segments: [
+            {type:'tag-span', tag:'small trees', text:' '},
+            {type:'tag-span', tag:'irreversible bodhisattvas', text:''}
+          ]
+        }
+      },
+      {
+        raw: '-he will be paid double',
+        want: { lineType:'gloss', tags:[], segments:[{type:'text', text:'he will be paid double'}] }
+      },
+      {
+        raw: 'child -> man -> runs away from father',
+        want: {
+          lineType: 'plain',
+          tags: [],
+          segments: [
+            {type:'text', text:'child '},
+            {type:'arrow', dir:'right'},
+            {type:'text', text:' man '},
+            {type:'arrow', dir:'right'},
+            {type:'text', text:' runs away from father'}
+          ]
+        }
+      },
+      {
+        raw: 'And know definitely [for sure] without a doubt',
+        want: {
+          lineType: 'plain',
+          tags: [],
+          segments: [
+            {type:'text', text:'And know definitely '},
+            {type:'bracket', children:[{type:'text', text:'for sure'}]},
+            {type:'text', text:' without a doubt'}
+          ]
+        }
+      },
+    ];
+
+    // Compare parse output to expectation; ignore startCol/endCol on tags
+    // since fixtures only specify the tag name.
+    function normalizeTags(tags) {
+      return (tags || []).map(t => ({ name: t.name }));
+    }
+
+    const results = document.getElementById('results');
+    let pass = 0, fail = 0;
+
+    for (const f of fixtures) {
+      const raw = f.raw;
+      const got = Parser.parseLine(raw);
+      const compact = { lineType: got.lineType, tags: normalizeTags(got.tags), segments: got.segments };
+      const ok = JSON.stringify(compact) === JSON.stringify(f.want);
+      if (ok) pass++; else fail++;
+
+      const div = document.createElement('div');
+      div.className = 'case ' + (ok ? 'pass' : 'fail');
+      div.innerHTML = `
+        <div class="label">${ok ? 'PASS' : 'FAIL'}</div>
+        <pre class="raw">${escape(JSON.stringify(raw))}</pre>
+      `;
+      if (!ok) {
+        div.innerHTML += `
+          <div class="diff-row"><span>got</span><pre>${escape(JSON.stringify(compact, null, 2))}</pre></div>
+          <div class="diff-row"><span>want</span><pre>${escape(JSON.stringify(f.want, null, 2))}</pre></div>
+        `;
+      }
+      results.appendChild(div);
+    }
+
+    const summary = document.getElementById('summary');
+    summary.textContent = `${pass} pass, ${fail} fail (${fixtures.length} total)`;
+    summary.classList.add(fail === 0 ? 'ok' : 'bad');
+
+    function escape(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
+</html>
