@@ -1,14 +1,10 @@
-# Study Notes
+# Study Notes (texteditor)
 
 A plain-text-first semantic study editor for DRBU coursework.
 Single-file HTML, vanilla JS, no build step.
 
-## Spec
+See [SPEC.md](SPEC.md) for the full project spec.
 
-Read in order:
-1. [docs/00-handoff.md](docs/00-handoff.md) — project handoff and phased plan
-2. [docs/01-addendum.md](docs/01-addendum.md) — resolved parser/renderer rules (overrides handoff where they conflict)
+## Workflow
 
-## Workflow constraint
-
-Claude Code commits after each numbered item in the phased plan, not at the end.
+Claude Code commits after each numbered item in the phased build plan, not at the end.
